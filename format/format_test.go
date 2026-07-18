@@ -1,4 +1,4 @@
-﻿﻿package format
+package format
 
 import (
 	"reflect"
@@ -23,21 +23,21 @@ func TestDatatypeEncodeDecode(t *testing.T) {
 		{
 			name: "float 32-bit",
 			dt: DatatypeMessage{
-				Version:     DatatypeVersion2,
-				Class:       ClassFloat,
-				ByteOrder:   OrderLittleEndian,
-				Size:        4,
-				FloatBits:   24,
+				Version:   DatatypeVersion2,
+				Class:     ClassFloat,
+				ByteOrder: OrderLittleEndian,
+				Size:      4,
+				FloatBits: 24,
 			},
 		},
 		{
 			name: "float 64-bit",
 			dt: DatatypeMessage{
-				Version:     DatatypeVersion2,
-				Class:       ClassFloat,
-				ByteOrder:   OrderLittleEndian,
-				Size:        8,
-				FloatBits:   53,
+				Version:   DatatypeVersion2,
+				Class:     ClassFloat,
+				ByteOrder: OrderLittleEndian,
+				Size:      8,
+				FloatBits: 53,
 			},
 		},
 		{
@@ -226,4 +226,3 @@ func TestLayoutEncodeDecode(t *testing.T) {
 		})
 	}
 }
-

@@ -1,4 +1,4 @@
-﻿﻿package format
+package format
 
 import (
 	"encoding/binary"
@@ -12,14 +12,14 @@ const (
 )
 
 type LinkMessage struct {
-	Version         uint8
-	LinkType        uint8
-	CreationOrder   uint8
-	Flags           uint8
-	Name            string
-	TargetAddress   uint64
-	TargetPath      string
-	ExternalFile    string
+	Version       uint8
+	LinkType      uint8
+	CreationOrder uint8
+	Flags         uint8
+	Name          string
+	TargetAddress uint64
+	TargetPath    string
+	ExternalFile  string
 }
 
 func EncodeLinkMessage(link LinkMessage) ([]byte, error) {
@@ -127,4 +127,3 @@ func DecodeLinkMessage(data []byte) (LinkMessage, error) {
 
 	return link, nil
 }
-

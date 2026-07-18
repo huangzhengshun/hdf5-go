@@ -1,4 +1,4 @@
-﻿﻿package format
+package format
 
 import (
 	"fmt"
@@ -52,4 +52,3 @@ func HexDump(data []byte, offset int) string {
 func HexDumpBytes(data []byte) string {
 	return HexDump(data, 0)
 }
-

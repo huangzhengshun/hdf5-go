@@ -12,8 +12,8 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/hdf5-go/hdf5/format"
 	"github.com/klauspost/compress/zstd"
+	"github.com/zhengshun.huang/hdf5-go/format"
 	lzf "github.com/zhuyie/golzf"
 )
 

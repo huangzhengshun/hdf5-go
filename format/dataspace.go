@@ -1,4 +1,4 @@
-﻿﻿package format
+package format
 
 import (
 	"encoding/binary"
@@ -70,5 +70,3 @@ func DecodeDataspaceMessage(data []byte) (DataspaceMessage, error) {
 
 	return ds, nil
 }
-
-

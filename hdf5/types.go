@@ -6,7 +6,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/hdf5-go/hdf5/format"
+	"github.com/zhengshun.huang/hdf5-go/format"
 )
 
 type FileMode uint8
@@ -39,16 +39,16 @@ func (m FileMode) String() string {
 type DatatypeClass uint8
 
 const (
-	DatatypeInteger DatatypeClass = 0
-	DatatypeFloat                 = 1
-	DatatypeString                = 2
-	DatatypeCompound              = 4
-	DatatypeArray                 = 5
-	DatatypeEnum                  = 6
-	DatatypeReference             = 7
-	DatatypeOpaque                = 8
-	DatatypeBitfield              = 9
-	DatatypeVarLength             = 10
+	DatatypeInteger   DatatypeClass = 0
+	DatatypeFloat                   = 1
+	DatatypeString                  = 2
+	DatatypeCompound                = 4
+	DatatypeArray                   = 5
+	DatatypeEnum                    = 6
+	DatatypeReference               = 7
+	DatatypeOpaque                  = 8
+	DatatypeBitfield                = 9
+	DatatypeVarLength               = 10
 )
 
 var (

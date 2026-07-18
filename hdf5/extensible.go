@@ -1,9 +1,9 @@
-﻿package hdf5
+package hdf5
 
 import (
 	"errors"
 
-	"github.com/hdf5-go/hdf5/format"
+	"github.com/zhengshun.huang/hdf5-go/format"
 )
 
 type ExtensibleDatatype struct {

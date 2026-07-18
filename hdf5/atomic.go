@@ -1,4 +1,4 @@
-﻿﻿package hdf5
+﻿package hdf5
 
 import (
 	"encoding/binary"
@@ -6,7 +6,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/hdf5-go/hdf5/format"
+	"github.com/zhengshun.huang/hdf5-go/format"
 )
 
 var atomicWriteMutexes sync.Map

@@ -1,12 +1,12 @@
-﻿﻿package format
+package format
 
 import (
 	"encoding/binary"
 )
 
 type SymbolTableMessage struct {
-	BTreeAddress     uint64
-	NameHeapAddress  uint64
+	BTreeAddress    uint64
+	NameHeapAddress uint64
 }
 
 func EncodeSymbolTableMessage(btreeAddr, heapAddr uint64) []byte {
@@ -22,5 +22,3 @@ func DecodeSymbolTableMessage(data []byte) SymbolTableMessage {
 	st.NameHeapAddress = binary.LittleEndian.Uint64(data[8:16])
 	return st
 }
-
-

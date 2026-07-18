@@ -4,7 +4,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/hdf5-go/hdf5/format"
+	"github.com/zhengshun.huang/hdf5-go/format"
 )
 
 type FileMetadata struct {

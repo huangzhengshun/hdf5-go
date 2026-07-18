@@ -1,4 +1,4 @@
-﻿﻿package format
+package format
 
 import (
 	"encoding/binary"
@@ -6,10 +6,10 @@ import (
 )
 
 type AttributeMessage struct {
-	Name         string
-	Datatype     DatatypeMessage
-	Dataspace    DataspaceMessage
-	Data         []byte
+	Name      string
+	Datatype  DatatypeMessage
+	Dataspace DataspaceMessage
+	Data      []byte
 }
 
 func EncodeAttributeMessage(attr AttributeMessage) ([]byte, error) {
@@ -60,7 +60,7 @@ func DecodeAttributeMessage(data []byte) (AttributeMessage, error) {
 	var attr AttributeMessage
 	offset := 0
 
-	nameLen := binary.LittleEndian.Uint32(data[offset:offset+4])
+	nameLen := binary.LittleEndian.Uint32(data[offset : offset+4])
 	offset += 4
 
 	nameBytesLen := (int(nameLen) + 7) / 8 * 8
@@ -107,4 +107,3 @@ func DecodeAttributeMessage(data []byte) (AttributeMessage, error) {
 
 	return attr, nil
 }
-

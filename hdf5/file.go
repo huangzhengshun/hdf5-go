@@ -5,7 +5,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/hdf5-go/hdf5/format"
+	"github.com/zhengshun.huang/hdf5-go/format"
 )
 
 type FreeSpaceInfo struct {
@@ -550,5 +550,3 @@ func (f *File) GetTotalSpace() (uint64, error) {
 	endPos, _ := f.reader.Seek(0, 2)
 	return uint64(endPos), nil
 }
-
-

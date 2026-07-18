@@ -1,4 +1,4 @@
-﻿﻿package format
+package format
 
 import (
 	"encoding/binary"
@@ -88,5 +88,3 @@ func DecodeLayoutMessage(data []byte) (LayoutMessage, error) {
 
 	return lm, nil
 }
-
-

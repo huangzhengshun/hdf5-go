@@ -1,4 +1,4 @@
-﻿﻿package format
+package format
 
 import (
 	"encoding/binary"
@@ -6,13 +6,13 @@ import (
 )
 
 const (
-	FilterDeflate    = 1
-	FilterShuffle    = 2
-	FilterFletcher32 = 3
-	FilterLZF        = 32000
+	FilterDeflate     = 1
+	FilterShuffle     = 2
+	FilterFletcher32  = 3
+	FilterLZF         = 32000
 	FilterScaleOffset = 32001
-	FilterBitshuffle = 32008
-	FilterZSTD       = 32015
+	FilterBitshuffle  = 32008
+	FilterZSTD        = 32015
 )
 
 type FilterPipelineMessage struct {
@@ -102,5 +102,3 @@ func DecodeFilterPipelineMessage(data []byte) (FilterPipelineMessage, error) {
 
 	return fpm, nil
 }
-
-

@@ -1,4 +1,4 @@
-﻿package hdf5
+package hdf5
 
 import (
 	"container/list"

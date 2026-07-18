@@ -1,4 +1,4 @@
-﻿﻿package format
+package format
 
 import (
 	"encoding/binary"
@@ -195,5 +195,3 @@ func uint64ToBytes(val uint64, size uint8) []byte {
 	}
 	return b
 }
-
-
