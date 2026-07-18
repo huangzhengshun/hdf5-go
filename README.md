@@ -265,12 +265,12 @@ func main() {
 
 ## 文档目录
 
-- [README.md](./README.md) - 项目概述和快速入门
-- [api_reference.md](./api_reference.md) - 完整 API 参考
-- [examples.md](./examples.md) - 详细代码示例
-- [datatypes.md](./datatypes.md) - 数据类型说明
-- [compression.md](./compression.md) - 压缩算法说明
-- [errors.md](./errors.md) - 错误处理指南
+- [README.md](README.md) - 项目概述和快速入门
+- [docs/api_reference.md](docs/api_reference.md) - 完整 API 参考
+- [docs/examples.md](docs/examples.md) - 详细代码示例
+- [docs/datatypes.md](docs/datatypes.md) - 数据类型说明
+- [docs/compression.md](docs/compression.md) - 压缩算法说明
+- [docs/errors.md](docs/errors.md) - 错误处理指南
 
 ## 测试
 
