@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"strings"
+	"sync"
 
 	"github.com/huangzhengshun/hdf5-go/format"
 )
@@ -23,6 +24,7 @@ type group struct {
 	super  *format.Superblock
 	links  map[string]LinkInfo
 	closed bool
+	mu     sync.RWMutex
 }
 
 func (g *group) Name() string {
@@ -50,9 +52,12 @@ func (g *group) File() *File {
 }
 
 func (g *group) CreateGroup(name string) (Group, error) {
+	g.mu.RLock()
 	if g.closed {
+		g.mu.RUnlock()
 		return nil, ErrClosedGroup
 	}
+	g.mu.RUnlock()
 
 	fullPath := name
 	if g.name == "/" {
@@ -173,8 +178,13 @@ func (g *group) CreateLinkWithOptions(targetPath, linkName string, options LinkC
 					}
 				}
 			}
-			parentGrp, _ := g.GetGroup(strings.Join(parts[:len(parts)-1], "/"))
-			parentGroup = parentGrp.(*group)
+			parentGrp, err := g.GetGroup(strings.Join(parts[:len(parts)-1], "/"))
+			if err != nil {
+				return err
+			}
+			if pg, ok := parentGrp.(*group); ok {
+				parentGroup = pg
+			}
 			finalLinkName = parts[len(parts)-1]
 		}
 	}
@@ -270,8 +280,13 @@ func (g *group) CreateExternalLinkWithOptions(externalFile, targetPath, linkName
 					}
 				}
 			}
-			parentGrp, _ := g.GetGroup(strings.Join(parts[:len(parts)-1], "/"))
-			parentGroup = parentGrp.(*group)
+			parentGrp, err := g.GetGroup(strings.Join(parts[:len(parts)-1], "/"))
+			if err != nil {
+				return err
+			}
+			if pg, ok := parentGrp.(*group); ok {
+				parentGroup = pg
+			}
 			finalLinkName = parts[len(parts)-1]
 		}
 	}
@@ -907,10 +922,13 @@ func (g *group) Attributes() *AttributeManager {
 }
 
 func (g *group) Close() error {
+	g.mu.Lock()
 	if g.closed {
+		g.mu.Unlock()
 		return nil
 	}
 	g.closed = true
+	g.mu.Unlock()
 	return nil
 }
 

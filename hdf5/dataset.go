@@ -200,7 +200,7 @@ func undoScaleOffset(data []byte, elemSize int, scaleType int, scaleOffset float
 }
 
 func applyBitshuffle(data []byte, elemSize int) []byte {
-	if elemSize <= 1 {
+	if elemSize <= 1 || len(data)%elemSize != 0 {
 		return data
 	}
 
@@ -214,6 +214,9 @@ func applyBitshuffle(data []byte, elemSize int) []byte {
 				srcByte := data[elemIdx*numBytes+bytePos]
 				bit := (srcByte >> bitGroup) & 1
 				destByteIdx := (bitGroup*numBytes + bytePos) * numElems / 8
+				if destByteIdx >= len(result) {
+					continue
+				}
 				destBitIdx := (bitGroup*numBytes + bytePos) % 8
 				if bit != 0 {
 					result[destByteIdx] |= 1 << destBitIdx
@@ -226,7 +229,7 @@ func applyBitshuffle(data []byte, elemSize int) []byte {
 }
 
 func undoBitshuffle(data []byte, elemSize int) []byte {
-	if elemSize <= 1 {
+	if elemSize <= 1 || len(data)%elemSize != 0 {
 		return data
 	}
 
@@ -238,6 +241,9 @@ func undoBitshuffle(data []byte, elemSize int) []byte {
 		for bitGroup := 0; bitGroup < 8; bitGroup++ {
 			for elemIdx := 0; elemIdx < numElems; elemIdx++ {
 				destByteIdx := (bitGroup*numBytes + bytePos) * numElems / 8
+				if destByteIdx >= len(data) {
+					continue
+				}
 				destBitIdx := (bitGroup*numBytes + bytePos) % 8
 				bit := (data[destByteIdx] >> destBitIdx) & 1
 				if bit != 0 {

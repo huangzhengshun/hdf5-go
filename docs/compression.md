@@ -202,26 +202,27 @@ BZIP2 是一个高压缩率的算法，基于 Burrows-Wheeler 变换。
 - **速度**：慢（压缩和解压都很慢）
 - **适用场景**：存档数据，不频繁访问的大数据集
 
-### 使用示例
+### 使用说明
+
+> **注意**：本库**不支持 BZIP2 压缩**（Go 标准库仅提供 BZIP2 解压功能），使用 `"bzip2"` 作为压缩算法会返回错误。但可以读取由其他工具（如 h5py）创建的 BZIP2 压缩文件。
 
 ```go
-// 创建带 BZIP2 压缩的数据集
-plist := hdf5.PropertyList{
-    Chunks:      []uint64{100},
-    Compression: "bzip2",
-}
-
-data := make([]float64, 1000)
-for i := range data {
-    data[i] = float64(i) * 0.1
-}
-
-dset, err := f.CreateDataset("bzip2_data", hdf5.DatatypeFloat64,
-    hdf5.Dataspace{Dims: []uint64{1000}, MaxDims: []uint64{hdf5.H5S_UNLIMITED}}, plist)
+// 读取由 h5py 创建的 BZIP2 压缩文件
+f, err := hdf5.OpenFile("bzip2_compressed.h5", hdf5.ReadOnly)
 if err != nil {
     // 处理错误
 }
-err = dset.Write(data)
+defer f.Close()
+
+dset, err := f.GetDataset("data")
+if err != nil {
+    // 处理错误
+}
+defer dset.Close()
+
+var data []float64
+err = dset.Read(&data)
+// 读取成功（解压由 Go 标准库的 bzip2 包处理）
 ```
 
 ---

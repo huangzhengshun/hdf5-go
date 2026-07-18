@@ -128,13 +128,17 @@ func openFileWithBuffer(name string, mode FileMode, buf *memoryBuffer) (*File, e
 	if mode == ReadOnly || mode == ReadWrite || mode == Append {
 		sb, err := format.ReadSuperblock(f.reader)
 		if err != nil {
-			f.reader.(*os.File).Close()
+			if file, ok := f.reader.(*os.File); ok {
+				file.Close()
+			}
 			return nil, err
 		}
 		f.super = sb
 		rootOH, err := format.ReadObjectHeader(f.reader, sb, sb.RootGroupAddr)
 		if err != nil {
-			f.reader.(*os.File).Close()
+			if file, ok := f.reader.(*os.File); ok {
+				file.Close()
+			}
 			return nil, err
 		}
 		links := parseLinksFromObjectHeader(rootOH)
@@ -174,7 +178,9 @@ func openFileWithBuffer(name string, mode FileMode, buf *memoryBuffer) (*File, e
 
 		rootAddr, err := format.WriteObjectHeader(f.writer, sb, rootOH)
 		if err != nil {
-			f.writer.(*os.File).Close()
+			if file, ok := f.writer.(*os.File); ok {
+				file.Close()
+			}
 			return nil, err
 		}
 
