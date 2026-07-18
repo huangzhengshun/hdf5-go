@@ -23,17 +23,40 @@ HDF5 Go 库支持多种 HDF5 数据类型，包括基本数值类型、复合类
 
 ```go
 type Datatype struct {
-    Class        DatatypeClass      // 数据类型类别
-    Size         uint32             // 数据类型大小（字节）
-    ByteOrder    ByteOrder          // 字节序
-    Sign         Sign               // 符号类型（仅整数）
-    FloatBits    uint8              // 浮点位数
-    Fields       []CompoundField    // 复合类型字段
-    BaseType     *Datatype          // 基础类型（枚举、数组、变长）
-    ArrayDims    []uint64           // 数组维度
-    EnumMembers  []EnumMember       // 枚举成员
-    StringLength uint32             // 字符串长度
+    Class         DatatypeClass    // 数据类型类别
+    Size          uint32           // 数据类型大小（字节）
+    ByteOrder     ByteOrder        // 字节序
+    Sign          Sign             // 符号类型（仅整数）
+    FloatBits     uint8            // 浮点位数
+    StringPadding StringPadding    // 字符串填充方式
+    StringSize    uint32           // 字符串大小
+    Compression   string           // 压缩算法
+    Shuffle       bool             // 是否启用 Shuffle
+    Fletcher32    bool             // 是否启用 Fletcher32 校验
+    Fields        []CompoundField  // 复合类型字段
+    EnumMembers   []EnumMember     // 枚举成员
+    ArrayDims     []uint64         // 数组维度
+    BaseType      *Datatype        // 基础类型（枚举、数组、变长）
 }
+```
+
+### DatatypeClass 常量
+
+`DatatypeClass` 常量值与 HDF5 规范和 `format` 包保持一致：
+
+```go
+const (
+    DatatypeInteger   DatatypeClass = 0
+    DatatypeFloat     DatatypeClass = 1
+    DatatypeString    DatatypeClass = 2
+    DatatypeArray     DatatypeClass = 3
+    DatatypeCompound  DatatypeClass = 4
+    DatatypeEnum      DatatypeClass = 5
+    DatatypeReference DatatypeClass = 6
+    DatatypeOpaque    DatatypeClass = 7
+    DatatypeBitfield  DatatypeClass = 8
+    DatatypeVarLength DatatypeClass = 9
+)
 ```
 
 ---
@@ -340,6 +363,58 @@ err = dset.Read(&result)
 // result[1] = [4, 5, 6, 7, 8]
 ```
 
+### 6.3 实现说明
+
+变长数据类型的读写涉及多个内部处理细节：
+
+1. **数据大小计算**：`Read()` 方法对 `DatatypeVarLength` 类型使用 `layout.DataSize` 来确定实际数据大小，而不是简单的 `dspace.Size() * dtype.Size`。这是因为每个变长元素的长度可能不同。
+
+2. **切片长度计算**：`decodeSliceData` 函数对变长类型跳过基于 `dtype.Size` 的切片长度计算，避免因固定大小假设导致的切片越界。
+
+3. **基础类型解码**：`decodeDatatypeV2` 在 `ClassVarLength` 解码时，对简单基础类型（如 int、float）使用 `baseDtSize = 16` 作为默认基础类型大小。
+
+4. **常量一致性**：`DatatypeClass` 常量值与 HDF5 规范保持一致（`DatatypeArray=3`、`DatatypeEnum=5` 等），确保与 `format` 包的解码逻辑正确对应。
+
+### 6.4 完整往返示例
+
+```go
+package main
+
+import (
+    "fmt"
+    
+    "github.com/huangzhengshun/hdf5-go"
+)
+
+func main() {
+    f, _ := hdf5.OpenFile("varlen.h5", hdf5.Create)
+    defer f.Close()
+    
+    varlenDtype := hdf5.Datatype{
+        Class:    hdf5.DatatypeVarLength,
+        BaseType: &hdf5.DatatypeInt32,
+    }
+    
+    dset, _ := f.CreateDataset("data", varlenDtype,
+        hdf5.Dataspace{Dims: []uint64{3}}, hdf5.PropertyList{})
+    defer dset.Close()
+    
+    writeData := [][]int32{
+        {1, 2, 3},
+        {4, 5, 6, 7, 8},
+        {9, 10},
+    }
+    dset.Write(writeData)
+    
+    var readData [][]int32
+    dset.Read(&readData)
+    
+    // readData 与 writeData 完全相同
+    fmt.Printf("%v\n", readData)
+    // Output: [[1 2 3] [4 5 6 7 8] [9 10]]
+}
+```
+
 ---
 
 ## 7. 字符串数据类型
@@ -351,9 +426,11 @@ err = dset.Read(&result)
 ```go
 // 创建固定长度字符串类型（长度为 20）
 fixedStringDtype := hdf5.Datatype{
-    Class:        hdf5.DatatypeString,
-    Size:         20,
-    StringLength: 20,
+    Class:         hdf5.DatatypeString,
+    Size:          20,
+    StringSize:    20,
+    StringPadding: hdf5.NullTerminated,
+    ByteOrder:     hdf5.LittleEndian,
 }
 
 // 创建字符串数据集
@@ -369,7 +446,19 @@ var result []string
 err = dset.Read(&result)
 ```
 
-### 7.2 变长字符串
+### 7.2 字符串属性动态大小
+
+对于通过 `Attributes().Set()` 设置的字符串属性，库会根据实际字符串长度动态计算 `Size` 和 `StringSize`，不再使用固定的 64 字节长度：
+
+- 对于单个字符串：`Size = max(len(str), 1)`
+- 对于字符串切片：`Size = max(所有字符串长度的最大值, 1)`
+
+这样可以正确支持：
+- 超过 64 字符的长字符串（之前会被截断）
+- 空字符串（最小占 1 字节）
+- 字符串切片（每个元素大小相同，按最长字符串计算）
+
+### 7.3 变长字符串
 
 ```go
 // 创建变长字符串类型
@@ -391,7 +480,7 @@ var result []string
 err = dset.Read(&result)
 ```
 
-### 7.3 字符串编码
+### 7.4 字符串编码
 
 HDF5 字符串支持多种编码方式：
 
@@ -408,11 +497,14 @@ HDF5 字符串支持多种编码方式：
 
 ### 8.1 对象引用
 
-对象引用（Object Reference）指向 HDF5 文件中的另一个对象（组或数据集）。
+对象引用（Object Reference）指向 HDF5 文件中的另一个对象（组或数据集）。引用数据类型使用 `DatatypeReference` 类别，大小为 8 字节。
 
 ```go
 // 创建对象引用类型
-refDtype := hdf5.DatatypeObjectReference
+refDtype := hdf5.Datatype{
+    Class: hdf5.DatatypeReference,
+    Size:  8,
+}
 
 // 创建存储引用的数据集
 dset, err := f.CreateDataset("references", refDtype,
@@ -438,7 +530,10 @@ obj, err := f.Dereference(refs[0])
 
 ```go
 // 创建区域引用类型
-regionRefDtype := hdf5.DatatypeRegionReference
+regionRefDtype := hdf5.Datatype{
+    Class: hdf5.DatatypeReference,
+    Size:  8,
+}
 
 // 创建存储区域引用的数据集
 dset, err := f.CreateDataset("region_refs", regionRefDtype,
@@ -511,6 +606,8 @@ err = dset.Write(intData)
 ### 10.2 注意事项
 
 1. **字节序问题**：不同平台的字节序可能不同，建议使用 `ByteOrderNative` 或在读写时进行转换。
-2. **字符串长度**：固定长度字符串会在末尾填充零字节，读取时需要正确处理。
+2. **字符串长度**：固定长度字符串会在末尾填充零字节，读取时需要正确处理。**字符串属性**（通过 `Attributes().Set()` 设置）的 `Size` 和 `StringSize` 会根据实际字符串长度动态计算，支持任意长度的字符串。
 3. **复合类型字段顺序**：复合类型的字段必须按照正确的顺序和偏移量定义。
 4. **变长类型内存管理**：变长类型在读取后需要正确释放内存。
+5. **DatatypeClass 常量**：不要修改 `DatatypeClass` 常量值，它们必须与 HDF5 规范和 `format` 包中定义的值保持一致。
+6. **引用类型**：对象引用和区域引用都使用 `DatatypeReference` 类别（值为 6），大小为 8 字节。区分对象引用和区域引用通过 `ObjectReference` 和 `RegionReference` 结构体实现。

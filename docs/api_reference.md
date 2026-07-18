@@ -458,7 +458,7 @@ if err != nil {
 func (d *dataset) ReadSlice(data interface{}, sel Selection) error
 ```
 
-按选择读取数据（支持点选择、超平面选择、掩码选择）。
+按选择读取数据（支持点选择、超平面选择、多超平面选择、掩码选择）。
 
 **参数：**
 - `data` - 用于接收数据的切片指针
@@ -466,6 +466,10 @@ func (d *dataset) ReadSlice(data interface{}, sel Selection) error
 
 **返回值：**
 - `error` - 错误信息
+
+**说明：**
+
+该方法同时支持连续存储（contiguous）和分块存储（chunked）数据集。对于分块数据集，内部使用 `readChunkedRaw()` 读取原始字节数据后再进行切片选择，避免了类型解码冲突。
 
 **示例：**
 ```go
@@ -482,12 +486,21 @@ sel := hdf5.Selection{
         {Start: []uint64{0}, Count: []uint64{3}},
     },
 }
-err := dset.ReadSlice(&result, sel)
+err = dset.ReadSlice(&result, sel)
+
+// 多超平面选择
+sel = hdf5.Selection{
+    Hyperslabs: []hdf5.Hyperslab{
+        {Start: []uint64{0}, Count: []uint64{3}},
+        {Start: []uint64{5}, Count: []uint64{2}},
+    },
+}
+err = dset.ReadSlice(&result, sel)
 
 // 掩码选择
 mask := []bool{false, true, false, true, false}
-sel := hdf5.Selection{Mask: mask}
-err := dset.ReadSlice(&result, sel)
+sel = hdf5.Selection{Mask: mask}
+err = dset.ReadSlice(&result, sel)
 ```
 
 #### WriteSlice
@@ -609,16 +622,23 @@ func (am *AttributeManager) Set(name string, data interface{}) error
 
 **参数：**
 - `name` - 属性名称
-- `data` - 属性值（支持基本类型、数组、字符串）
+- `data` - 属性值（支持基本类型、数组、字符串、字符串切片）
 
 **返回值：**
 - `error` - 错误信息
 
+**说明：**
+
+对于字符串属性，库会根据实际字符串长度动态计算存储大小（`Size` 和 `StringSize`），不再使用固定的 64 字节长度，因此支持任意长度的字符串（包括超过 64 字符的长字符串和空字符串）。
+
 **示例：**
 ```go
 err := g.Attributes().Set("description", "This is a test group")
-err := g.Attributes().Set("version", int32(1))
-err := g.Attributes().Set("values", []float64{1.0, 2.0, 3.0})
+err = g.Attributes().Set("version", int32(1))
+err = g.Attributes().Set("values", []float64{1.0, 2.0, 3.0})
+err = g.Attributes().Set("long_desc", "This is a very long string that exceeds 64 characters and would have been truncated before the fix")
+err = g.Attributes().Set("empty_string", "")
+err = g.Attributes().Set("string_list", []string{"apple", "banana", "cherry"})
 ```
 
 #### Delete
@@ -985,15 +1005,14 @@ const H5S_UNLIMITED = ^uint64(0)  // 无限维度
 ```go
 type Selection struct {
     Points     [][]uint64  // 点选择
-    Hyperslabs []Hyperslab // 超平面选择
+    Hyperslabs []Hyperslab // 超平面选择（支持多个）
     Mask       []bool      // 掩码选择
 }
 
 type Hyperslab struct {
-    Start []uint64  // 起始位置
-    Count []uint64  // 数量
+    Start  []uint64 // 起始位置
+    Count  []uint64 // 数量
     Stride []uint64 // 步长（可选）
-    Block  []uint64 // 块大小（可选）
 }
 ```
 
@@ -1001,10 +1020,18 @@ type Hyperslab struct {
 
 ```go
 type PropertyList struct {
-    Chunks      []uint64  // 分块大小
-    Compression string    // 压缩算法（"gzip", "lzf", "zstd", "bzip2"）
-    Shuffle     bool      // 是否启用 Shuffle 过滤器
-    Fletcher32  bool      // 是否启用 Fletcher32 校验
+    Chunks           []uint64      // 分块大小
+    Compression      string        // 压缩算法（"gzip", "lzf", "zstd"）
+    CompressionLevel int           // 压缩级别
+    Shuffle          bool          // 是否启用 Shuffle 过滤器
+    Fletcher32       bool          // 是否启用 Fletcher32 校验
+    FillValue        interface{}   // 填充值
+    DeflateLevel     int           // GZIP 压缩级别（同 CompressionLevel）
+    BlockSize        uint64        // 块大小
+    CacheSize        uint64        // 缓存大小
+    MaxDims          []uint64      // 最大维度
+    TrackTimes       bool          // 是否跟踪时间
+    // ... 其他字段
 }
 ```
 
@@ -1012,8 +1039,12 @@ type PropertyList struct {
 
 ```go
 type CopyOptions struct {
-    CopyChildren bool  // 是否复制子对象
-    Overwrite    bool  // 是否覆盖现有对象
+    CopyAttrs           bool // 是否复制属性
+    CopyChildren        bool // 是否复制子对象
+    HardLink            bool // 是否创建硬链接
+    ExpandSoftLinks     bool // 是否展开软链接
+    ExpandExternalLinks bool // 是否展开外部链接
+    Recursive           bool // 是否递归复制
 }
 ```
 
@@ -1021,7 +1052,9 @@ type CopyOptions struct {
 
 ```go
 type LinkCreateOptions struct {
-    HardLink bool  // 是否创建硬链接（默认软链接）
+    CreateIntermediateGroups bool // 是否自动创建中间组
+    AllowOverwrite           bool // 是否允许覆盖
+    DoNotFollowExisting      bool // 是否不跟随已存在的链接
 }
 ```
 
@@ -1035,5 +1068,70 @@ const (
     SpaceStrategyFIFO    SpaceAllocationStrategy = 1
     SpaceStrategyBest    SpaceAllocationStrategy = 2
     SpaceStrategyWorst   SpaceAllocationStrategy = 3
+)
+```
+
+### 10.8 数据类型类别
+
+```go
+type DatatypeClass uint8
+
+const (
+    DatatypeInteger   DatatypeClass = 0 // 整数
+    DatatypeFloat     DatatypeClass = 1 // 浮点
+    DatatypeString    DatatypeClass = 2 // 字符串
+    DatatypeArray     DatatypeClass = 3 // 数组
+    DatatypeCompound  DatatypeClass = 4 // 复合
+    DatatypeEnum      DatatypeClass = 5 // 枚举
+    DatatypeReference DatatypeClass = 6 // 引用
+    DatatypeOpaque    DatatypeClass = 7 // 不透明
+    DatatypeBitfield  DatatypeClass = 8 // 位域
+    DatatypeVarLength DatatypeClass = 9 // 变长
+)
+```
+
+> **注意**：上述常量值与 HDF5 规范和 `format` 包中定义的值保持一致，使用时不要修改。
+
+### 10.9 预定义数据类型
+
+```go
+// 整数类型
+var DatatypeInt8   = Datatype{Class: DatatypeInteger, Size: 1, ...}
+var DatatypeInt16  = Datatype{Class: DatatypeInteger, Size: 2, ...}
+var DatatypeInt32  = Datatype{Class: DatatypeInteger, Size: 4, ...}
+var DatatypeInt64  = Datatype{Class: DatatypeInteger, Size: 8, ...}
+var DatatypeUint8  = Datatype{Class: DatatypeInteger, Size: 1, Sign: Unsigned, ...}
+var DatatypeUint16 = Datatype{Class: DatatypeInteger, Size: 2, Sign: Unsigned, ...}
+var DatatypeUint32 = Datatype{Class: DatatypeInteger, Size: 4, Sign: Unsigned, ...}
+var DatatypeUint64 = Datatype{Class: DatatypeInteger, Size: 8, Sign: Unsigned, ...}
+
+// 浮点类型
+var DatatypeFloat32 = Datatype{Class: DatatypeFloat, Size: 4, FloatBits: 24, ...}
+var DatatypeFloat64 = Datatype{Class: DatatypeFloat, Size: 8, FloatBits: 53, ...}
+
+// 复合类型（复数）
+var DatatypeComplex64  = Datatype{Class: DatatypeCompound, Size: 8,  Fields: ...}
+var DatatypeComplex128 = Datatype{Class: DatatypeCompound, Size: 16, Fields: ...}
+```
+
+### 10.10 引用类型
+
+```go
+type ObjectReference struct {
+    ObjectAddr uint64
+    ObjectType ObjectType
+}
+
+type RegionReference struct {
+    DatasetAddr uint64
+    Selection   Selection
+}
+
+type ObjectType uint8
+
+const (
+    ObjectTypeGroup    ObjectType = 1
+    ObjectTypeDataset  ObjectType = 2
+    ObjectTypeDatatype ObjectType = 3
 )
 ```

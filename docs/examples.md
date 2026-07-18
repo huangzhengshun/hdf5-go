@@ -15,6 +15,9 @@
 11. [原子操作](#11-原子操作)
 12. [数据集调整大小](#12-数据集调整大小)
 13. [互操作性](#13-互操作性)
+14. [变长数据类型往返读写](#14-变长数据类型往返读写)
+15. [分块数据集切片读写](#15-分块数据集切片读写)
+16. [大字符串属性](#16-大字符串属性)
 
 ---
 
@@ -1719,3 +1722,243 @@ func main() {
     fmt.Println("Values:", result)
 }
 ```
+
+---
+
+## 14. 变长数据类型往返读写
+
+变长数据类型（`DatatypeVarLength`）允许每个元素是一个长度可变的数组。本示例演示完整的写入和读取往返流程。
+
+```go
+package main
+
+import (
+    "fmt"
+    "os"
+    
+    "github.com/huangzhengshun/hdf5-go"
+)
+
+func main() {
+    f, err := hdf5.OpenFile("varlen_roundtrip.h5", hdf5.Create)
+    if err != nil {
+        fmt.Printf("Failed to create file: %v\n", err)
+        os.Exit(1)
+    }
+    defer f.Close()
+    
+    // 定义变长 int32 数据类型
+    varlenDtype := hdf5.Datatype{
+        Class:    hdf5.DatatypeVarLength,
+        BaseType: &hdf5.DatatypeInt32,
+    }
+    
+    // 创建变长数据集
+    dset, err := f.CreateDataset("varlen_data", varlenDtype,
+        hdf5.Dataspace{Dims: []uint64{3}}, hdf5.PropertyList{})
+    if err != nil {
+        fmt.Printf("Failed to create dataset: %v\n", err)
+        os.Exit(1)
+    }
+    defer dset.Close()
+    
+    // 写入变长数据（每个元素长度不同）
+    writeData := [][]int32{
+        {1, 2, 3},
+        {4, 5, 6, 7, 8},
+        {9, 10},
+    }
+    err = dset.Write(writeData)
+    if err != nil {
+        fmt.Printf("Failed to write data: %v\n", err)
+        os.Exit(1)
+    }
+    
+    // 读取数据
+    var readData [][]int32
+    err = dset.Read(&readData)
+    if err != nil {
+        fmt.Printf("Failed to read data: %v\n", err)
+        os.Exit(1)
+    }
+    
+    // 验证数据
+    fmt.Println("Read varlength data:")
+    for i, row := range readData {
+        fmt.Printf("  [%d]: %v\n", i, row)
+    }
+}
+```
+
+> **注意**：变长数据类型在内部存储时使用 `layout.DataSize` 来确定实际数据大小，而不是简单的 `dspace.Size() * dtype.Size`。这是因为每个变长元素的长度不同，需要全局数据大小来确定存储空间。
+
+---
+
+## 15. 分块数据集切片读写
+
+分块数据集（chunked dataset）的 `ReadSlice` 操作内部使用 `readChunkedRaw()` 读取原始字节数据后再进行切片选择，避免类型解码冲突。
+
+```go
+package main
+
+import (
+    "fmt"
+    "os"
+    
+    "github.com/huangzhengshun/hdf5-go"
+)
+
+func main() {
+    f, err := hdf5.OpenFile("chunked_slice.h5", hdf5.Create)
+    if err != nil {
+        fmt.Printf("Failed to create file: %v\n", err)
+        os.Exit(1)
+    }
+    defer f.Close()
+    
+    // 创建分块压缩数据集
+    plist := hdf5.PropertyList{
+        Chunks:      []uint64{10},
+        Compression: "gzip",
+    }
+    
+    // 创建 1D 数据集，大小为 30
+    dset, err := f.CreateDataset("chunked_data", hdf5.DatatypeInt32,
+        hdf5.Dataspace{Dims: []uint64{30}, MaxDims: []uint64{hdf5.H5S_UNLIMITED}}, plist)
+    if err != nil {
+        fmt.Printf("Failed to create dataset: %v\n", err)
+        os.Exit(1)
+    }
+    defer dset.Close()
+    
+    // 写入完整数据
+    fullData := make([]int32, 30)
+    for i := range fullData {
+        fullData[i] = int32(i * 10)
+    }
+    err = dset.Write(fullData)
+    if err != nil {
+        fmt.Printf("Failed to write data: %v\n", err)
+        os.Exit(1)
+    }
+    
+    // 使用 ReadSlice 从分块数据集中读取一段数据
+    sel := hdf5.Selection{
+        Hyperslabs: []hdf5.Hyperslab{
+            {Start: []uint64{5}, Count: []uint64{10}}, // 读取索引 5-14 的元素
+        },
+    }
+    var sliceResult []int32
+    err = dset.ReadSlice(&sliceResult, sel)
+    if err != nil {
+        fmt.Printf("Failed to read slice: %v\n", err)
+        os.Exit(1)
+    }
+    
+    fmt.Println("Slice result:", sliceResult)
+    // 输出: [50 60 70 80 90 100 110 120 130 140]
+    
+    // 使用 WriteSlice 写入部分数据
+    writeSel := hdf5.Selection{
+        Hyperslabs: []hdf5.Hyperslab{
+            {Start: []uint64{0}, Count: []uint64{5}}, // 写入索引 0-4 的元素
+        },
+    }
+    newValues := []int32{100, 200, 300, 400, 500}
+    err = dset.WriteSlice(newValues, writeSel)
+    if err != nil {
+        fmt.Printf("Failed to write slice: %v\n", err)
+        os.Exit(1)
+    }
+    
+    // 读取完整数据以验证
+    var finalData []int32
+    err = dset.Read(&finalData)
+    if err != nil {
+        fmt.Printf("Failed to read final data: %v\n", err)
+        os.Exit(1)
+    }
+    fmt.Println("Final data:", finalData)
+}
+```
+
+> **注意**：对于分块数据集，`ReadSlice` 内部调用 `readChunkedRaw()` 读取所有原始字节，然后从原始字节中提取选择区域。这避免了之前因直接调用 `readChunked()` 解码到 `[]byte` 类型而导致的 "slice bounds out of range" panic。
+
+---
+
+## 16. 大字符串属性
+
+字符串属性现在支持任意长度（不再限制为 64 字节）。
+
+```go
+package main
+
+import (
+    "fmt"
+    "os"
+    
+    "github.com/huangzhengshun/hdf5-go"
+)
+
+func main() {
+    f, err := hdf5.OpenFile("large_string_attr.h5", hdf5.Create)
+    if err != nil {
+        fmt.Printf("Failed to create file: %v\n", err)
+        os.Exit(1)
+    }
+    defer f.Close()
+    
+    g, err := f.CreateGroup("data_group")
+    if err != nil {
+        fmt.Printf("Failed to create group: %v\n", err)
+        os.Exit(1)
+    }
+    defer g.Close()
+    
+    // 设置一个很长的字符串属性（超过 64 字符）
+    longDescription := "This is a very long description that exceeds 64 characters and would have been truncated before the bug fix was applied"
+    err = g.Attributes().Set("long_description", longDescription)
+    if err != nil {
+        fmt.Printf("Failed to set long description: %v\n", err)
+        os.Exit(1)
+    }
+    
+    // 设置空字符串属性
+    err = g.Attributes().Set("empty_string", "")
+    if err != nil {
+        fmt.Printf("Failed to set empty string: %v\n", err)
+        os.Exit(1)
+    }
+    
+    // 设置字符串切片属性
+    err = g.Attributes().Set("string_list", []string{"apple", "banana", "cherry"})
+    if err != nil {
+        fmt.Printf("Failed to set string list: %v\n", err)
+        os.Exit(1)
+    }
+    
+    // 读取长字符串属性
+    attr, err := g.Attributes().Get("long_description")
+    if err != nil {
+        fmt.Printf("Failed to get attribute: %v\n", err)
+        os.Exit(1)
+    }
+    var readLongDesc string
+    err = attr.Read(&readLongDesc)
+    if err != nil {
+        fmt.Printf("Failed to read attribute: %v\n", err)
+        os.Exit(1)
+    }
+    fmt.Println("Long description:", readLongDesc)
+    fmt.Println("Length:", len(readLongDesc))
+    
+    if readLongDesc != longDescription {
+        fmt.Println("ERROR: String mismatch!")
+        os.Exit(1)
+    }
+    
+    fmt.Println("Large string attribute test passed!")
+}
+```
+
+> **注意**：在修复之前，字符串属性大小被硬编码为 64 字节，超过 64 字符的字符串会被截断。现在 `Size` 和 `StringSize` 根据实际字符串长度动态计算，对于空字符串最小为 1 字节。

@@ -14,19 +14,24 @@
 
 ## 1. 概述
 
-HDF5 Go 库提供了结构化的错误处理机制，所有 API 操作都返回 `error` 类型，可以通过类型断言获取详细的错误信息。
+HDF5 Go 库提供了结构化的错误处理机制，所有 API 操作都返回 `error` 类型。库中预定义了多种错误变量（如 `ErrClosedDataset`、`ErrInvalidData`），同时提供了 `HDF5Error` 结构体用于携带更详细的错误信息（如错误码、位置、堆栈等）。
 
 ### 错误处理流程
 
 ```go
 f, err := hdf5.OpenFile("test.h5", hdf5.Create)
 if err != nil {
-    // 检查错误类型
-    if hdf5Err, ok := err.(*hdf5.Error); ok {
-        // 获取详细错误信息
-        fmt.Printf("Error code: %d\n", hdf5Err.Code)
-        fmt.Printf("Error message: %s\n", hdf5Err.Message)
-        fmt.Printf("Error stack: %s\n", hdf5Err.Stack)
+    // 检查是否为 HDF5Error
+    if hdf5.IsHDF5Error(err) {
+        // 获取错误码
+        code := hdf5.GetErrorCode(err)
+        fmt.Printf("Error code: %d\n", code)
+        // 使用 %+v 输出详细信息（位置、堆栈等）
+        fmt.Printf("Error details: %+v\n", err)
+    }
+    // 检查是否为预定义错误
+    if errors.Is(err, hdf5.ErrClosedFile) {
+        fmt.Println("File is closed")
     }
     return
 }
@@ -36,15 +41,15 @@ if err != nil {
 
 ## 2. 错误类型
 
-### 2.1 Error 结构体
+### 2.1 HDF5Error 结构体
 
 ```go
-type Error struct {
-    Code       ErrorCode      // 错误码
-    Message    string         // 错误消息
-    Stack      string         // 调用堆栈
-    Operation  string         // 操作名称
-    ObjectPath string         // 对象路径（可选）
+type HDF5Error struct {
+    Code     ErrorCode  // 错误码
+    Message  string     // 错误消息
+    Location string     // 发生位置（文件:行号）
+    Stack    []string   // 调用堆栈
+    Cause    error      // 原始错误（可选）
 }
 ```
 
@@ -52,106 +57,92 @@ type Error struct {
 
 ```go
 // 获取错误消息
-func (e *Error) Error() string
+func (e *HDF5Error) Error() string
 
-// 获取错误码
-func (e *Error) GetCode() ErrorCode
+// 获取原始错误
+func (e *HDF5Error) Unwrap() error
 
-// 获取调用堆栈
-func (e *Error) GetStack() string
+// 格式化输出（支持 %+v 获取详细信息）
+func (e *HDF5Error) Format(f fmt.State, c rune)
+```
 
-// 判断是否为特定错误码
-func (e *Error) IsCode(code ErrorCode) bool
+### 2.3 辅助函数
+
+```go
+// 判断是否为 HDF5Error
+func IsHDF5Error(err error) bool
+
+// 获取错误码（如果不是 HDF5Error 返回 ErrorCodeError）
+func GetErrorCode(err error) ErrorCode
+
+// 包装错误，添加上下文信息
+func WrapError(err error, message string) error
+
+// 创建新的 HDF5Error
+func NewError(code ErrorCode, message string) *HDF5Error
+func NewErrorWithCause(code ErrorCode, message string, cause error) *HDF5Error
 ```
 
 ---
 
 ## 3. 错误码
 
-### 3.1 文件操作错误
+### 3.1 标准错误码
 
-| 错误码 | 常量 | 说明 |
-|--------|------|------|
-| 1 | `ErrFileNotFound` | 文件不存在 |
-| 2 | `ErrFileOpenFailed` | 文件打开失败 |
-| 3 | `ErrFileCloseFailed` | 文件关闭失败 |
-| 4 | `ErrFileCreateFailed` | 文件创建失败 |
-| 5 | `ErrFileLocked` | 文件已被锁定 |
-| 6 | `ErrFileCorrupt` | 文件损坏 |
+```go
+type ErrorCode int
 
-### 3.2 对象操作错误
+const (
+    ErrorCodeOK             ErrorCode = 0   // 成功
+    ErrorCodeError          ErrorCode = -1  // 通用错误
+    ErrorCodeBadID          ErrorCode = -2  // 无效 ID
+    ErrorCodeBadParam       ErrorCode = -3  // 无效参数
+    ErrorCodeBadType        ErrorCode = -4  // 无效类型
+    ErrorCodeBadAlloc       ErrorCode = -5  // 内存分配失败
+    ErrorCodeBusy           ErrorCode = -6  // 资源忙
+    ErrorCodeCantOpenFile   ErrorCode = -7  // 无法打开文件
+    ErrorCodeCantCreateFile ErrorCode = -8  // 无法创建文件
+    ErrorCodeCantRead       ErrorCode = -9  // 无法读取
+    ErrorCodeCantWrite      ErrorCode = -10 // 无法写入
+    ErrorCodeCantSeek       ErrorCode = -11 // 无法定位
+    ErrorCodeEndOfFile      ErrorCode = -12 // 文件结束
+    ErrorCodeCorruptFile    ErrorCode = -13 // 文件损坏
+    ErrorCodeUnsupported    ErrorCode = -14 // 操作不支持
+    ErrorCodeOverflow       ErrorCode = -15 // 溢出
+    ErrorCodeUnderflow      ErrorCode = -16 // 下溢
+)
+```
 
-| 错误码 | 常量 | 说明 |
-|--------|------|------|
-| 10 | `ErrObjectNotFound` | 对象不存在 |
-| 11 | `ErrObjectExists` | 对象已存在 |
-| 12 | `ErrObjectTypeMismatch` | 对象类型不匹配 |
-| 13 | `ErrObjectInvalid` | 对象无效 |
+### 3.2 常用错误变量
 
-### 3.3 数据集操作错误
+库中预定义了以下错误变量，可以通过 `errors.Is()` 进行匹配：
 
-| 错误码 | 常量 | 说明 |
-|--------|------|------|
-| 20 | `ErrDatasetNotFound` | 数据集不存在 |
-| 21 | `ErrDatasetExists` | 数据集已存在 |
-| 22 | `ErrDatasetReadOnly` | 数据集只读 |
-| 23 | `ErrDatasetResizeFailed` | 数据集调整大小失败 |
-| 24 | `ErrDatasetSelectionInvalid` | 数据集选择无效 |
-
-### 3.4 数据类型错误
-
-| 错误码 | 常量 | 说明 |
-|--------|------|------|
-| 30 | `ErrInvalidDataType` | 无效数据类型 |
-| 31 | `ErrDataTypeMismatch` | 数据类型不匹配 |
-| 32 | `ErrDataTypeNotSupported` | 数据类型不支持 |
-| 33 | `ErrInvalidData` | 无效数据 |
-
-### 3.5 数据空间错误
-
-| 错误码 | 常量 | 说明 |
-|--------|------|------|
-| 40 | `ErrInvalidDataspace` | 无效数据空间 |
-| 41 | `ErrDataspaceMismatch` | 数据空间不匹配 |
-| 42 | `ErrDataspaceRankMismatch` | 数据空间维度不匹配 |
-| 43 | `ErrDataspaceSizeMismatch` | 数据空间大小不匹配 |
-
-### 3.6 属性操作错误
-
-| 错误码 | 常量 | 说明 |
-|--------|------|------|
-| 50 | `ErrAttributeNotFound` | 属性不存在 |
-| 51 | `ErrAttributeExists` | 属性已存在 |
-| 52 | `ErrAttributeInvalid` | 属性无效 |
-
-### 3.7 压缩错误
-
-| 错误码 | 常量 | 说明 |
-|--------|------|------|
-| 60 | `ErrCompressionFailed` | 压缩失败 |
-| 61 | `ErrDecompressionFailed` | 解压失败 |
-| 62 | `ErrCompressionNotSupported` | 压缩算法不支持 |
-
-### 3.8 内存错误
-
-| 错误码 | 常量 | 说明 |
-|--------|------|------|
-| 70 | `ErrMemoryAllocationFailed` | 内存分配失败 |
-| 71 | `ErrMemoryAccessError` | 内存访问错误 |
-
-### 3.9 IO 错误
-
-| 错误码 | 常量 | 说明 |
-|--------|------|------|
-| 80 | `ErrIOError` | IO 错误 |
-| 81 | `ErrReadFailed` | 读取失败 |
-| 82 | `ErrWriteFailed` | 写入失败 |
-
-### 3.10 其他错误
-
-| 错误码 | 常量 | 说明 |
-|--------|------|------|
-| 99 | `ErrUnknown` | 未知错误 |
+| 错误变量 | 错误消息 | 说明 |
+|---------|---------|------|
+| `ErrClosedGroup` | `hdf5: group is closed` | 组已关闭 |
+| `ErrClosedFile` | `hdf5: file is closed` | 文件已关闭 |
+| `ErrClosedDataset` | `hdf5: dataset is closed` | 数据集已关闭 |
+| `ErrInvalidData` | `hdf5: invalid data type` | 无效数据类型 |
+| `ErrInvalidDatatype` | `hdf5: invalid datatype` | 无效数据类型 |
+| `ErrInvalidDataspace` | `hdf5: invalid dataspace` | 无效数据空间 |
+| `ErrInvalidLayout` | `hdf5: invalid layout` | 无效存储布局 |
+| `ErrNotFound` | `hdf5: object not found` | 对象未找到 |
+| `ErrReadOnly` | `hdf5: file is read-only` | 文件只读 |
+| `ErrWriteOnly` | `hdf5: write-only` | 仅写模式 |
+| `ErrUnsupported` | `hdf5: operation not supported` | 操作不支持 |
+| `ErrInternal` | `hdf5: internal error` | 内部错误 |
+| `ErrExternalLink` | `hdf5: external links are not supported` | 外部链接不支持 |
+| `ErrInvalidSelection` | `hdf5: invalid selection` | 无效选择 |
+| `ErrInvalidArgument` | `hdf5: invalid argument` | 无效参数 |
+| `ErrIO` | `hdf5: I/O error` | I/O 错误 |
+| `ErrMemory` | `hdf5: memory allocation error` | 内存分配错误 |
+| `ErrTimeout` | `hdf5: timeout` | 超时 |
+| `ErrDeadlock` | `hdf5: deadlock detected` | 检测到死锁 |
+| `ErrBusy` | `hdf5: resource is busy` | 资源忙 |
+| `ErrCorrupt` | `hdf5: file is corrupt` | 文件损坏 |
+| `ErrIncompatible` | `hdf5: incompatible format` | 格式不兼容 |
+| `ErrOverflow` | `hdf5: overflow` | 溢出 |
+| `ErrUnderflow` | `hdf5: underflow` | 下溢 |
 
 ---
 
@@ -203,14 +194,16 @@ defer dset.Close()
 ```go
 f, err := hdf5.OpenFile("nonexistent.h5", hdf5.ReadOnly)
 if err != nil {
-    if hdf5Err, ok := err.(*hdf5.Error); ok {
-        switch hdf5Err.Code {
-        case hdf5.ErrFileNotFound:
-            fmt.Println("File does not exist")
-        case hdf5.ErrFileOpenFailed:
+    // 检查是否为 HDF5Error
+    if hdf5.IsHDF5Error(err) {
+        code := hdf5.GetErrorCode(err)
+        switch code {
+        case hdf5.ErrorCodeCantOpenFile:
             fmt.Println("Failed to open file")
+        case hdf5.ErrorCodeCorruptFile:
+            fmt.Println("File is corrupt")
         default:
-            fmt.Printf("Unexpected error: %v\n", hdf5Err)
+            fmt.Printf("HDF5 error (code=%d): %v\n", code, err)
         }
     } else {
         fmt.Printf("Non-HDF5 error: %v\n", err)
@@ -219,7 +212,25 @@ if err != nil {
 }
 ```
 
-### 4.4 错误包装
+### 4.4 使用 errors.Is 匹配预定义错误
+
+```go
+err := dset.Read(&result)
+if err != nil {
+    switch {
+    case errors.Is(err, hdf5.ErrClosedDataset):
+        fmt.Println("Dataset is closed, please reopen it")
+    case errors.Is(err, hdf5.ErrInvalidData):
+        fmt.Println("Invalid data type, check the dataset type")
+    case errors.Is(err, hdf5.ErrIO):
+        fmt.Println("I/O error occurred")
+    default:
+        fmt.Printf("Other error: %v\n", err)
+    }
+}
+```
+
+### 4.5 错误包装
 
 使用 `fmt.Errorf` 包装错误，添加上下文信息：
 
@@ -237,7 +248,7 @@ func processFile(filename string) error {
 }
 ```
 
-### 4.5 日志记录
+### 4.6 日志记录
 
 使用标准日志包记录错误：
 
@@ -247,7 +258,10 @@ import "log"
 f, err := hdf5.OpenFile("test.h5", hdf5.Create)
 if err != nil {
     log.Printf("ERROR: Failed to open file: %v", err)
-    log.Printf("ERROR: Stack trace: %s", err.(*hdf5.Error).Stack)
+    if hdf5.IsHDF5Error(err) {
+        // 使用 %+v 格式化输出详细信息（包括位置和堆栈）
+        log.Printf("ERROR: Details: %+v", err)
+    }
     return err
 }
 ```
@@ -388,13 +402,13 @@ err = dset.WriteSlice(data[:3], sel)  // 正确：3 个元素
 
 **错误信息：**
 ```
-Error: compression not supported
+Error: hdf5: bzip2 compression is not supported (standard library only provides decompression)
 ```
 
 **可能原因：**
 - 压缩算法名称拼写错误
 - 未启用分块
-- 使用了不支持的压缩算法
+- 使用了不支持的压缩算法（如 BZIP2 写入压缩）
 
 **解决方案：**
 
@@ -405,7 +419,9 @@ plist := hdf5.PropertyList{
     Compression: "gzip",         // 正确的算法名称
 }
 
-// 支持的压缩算法：gzip, lzf, zstd, bzip2
+// 支持的压缩算法：
+// - 写入和读取：gzip, lzf, zstd
+// - 仅读取：bzip2（不支持写入）
 ```
 
 ### 5.6 "dataset resize failed" 错误
@@ -439,6 +455,80 @@ err = dset.Resize([]uint64{10})  // 正确
 err = dset.Resize([]uint64{3})   // 错误：缩小不允许
 ```
 
+### 5.7 "dataset is closed" 错误
+
+**错误信息：**
+```
+Error: hdf5: dataset is closed
+```
+
+**可能原因：**
+- 在调用 `dset.Close()` 后再次使用该数据集对象
+- 并发场景下数据集被另一个 goroutine 关闭
+
+**解决方案：**
+
+```go
+dset, err := f.GetDataset("data")
+if err != nil {
+    return err
+}
+defer dset.Close()  // 使用 defer 确保只关闭一次
+
+// 在 Close 之后不要再访问 dset
+err = dset.Read(&result)  // 正确
+// dset.Close()  // defer 会在函数返回时自动调用
+```
+
+### 5.8 "slice bounds out of range" 错误（已修复）
+
+**错误信息：**
+```
+panic: runtime error: slice bounds out of range [:16] with capacity 10
+```
+
+**历史原因（已在最新版本中修复）：**
+- `ReadSlice` 方法对分块（chunked）数据集调用 `readChunked()` 时，会尝试将原始字节数据解码到 `[]byte` 类型，导致切片越界
+
+**修复说明：**
+
+新增 `readChunkedRaw()` 方法返回原始字节数据，`ReadSlice` 现已正确处理分块数据集。如果在使用旧版本时遇到此错误，请升级到最新版本。
+
+```go
+// 现在可以安全地在分块数据集上使用 ReadSlice
+sel := hdf5.Selection{
+    Hyperslabs: []hdf5.Hyperslab{
+        {Start: []uint64{5}, Count: []uint64{10}},
+    },
+}
+var result []int32
+err := dset.ReadSlice(&result, sel)  // 现在可以正常工作
+```
+
+### 5.9 字符串属性截断问题（已修复）
+
+**症状：**
+- 设置的字符串属性在读取后被截断为 64 字符
+
+**历史原因（已在最新版本中修复）：**
+- 字符串属性大小被硬编码为 64 字节，超过 64 字符的字符串会被截断
+
+**修复说明：**
+
+`attribute.go` 中现在根据实际字符串长度动态计算 `Size` 和 `StringSize`。空字符串最小为 1 字节。
+
+```go
+// 现在可以设置任意长度的字符串属性
+longStr := "This is a very long string that exceeds 64 characters..."
+err := g.Attributes().Set("description", longStr)  // 现在可以正常工作
+
+// 读取时不会被截断
+attr, _ := g.Attributes().Get("description")
+var readStr string
+attr.Read(&readStr)
+// readStr == longStr
+```
+
 ---
 
 ## 6. 调试技巧
@@ -458,9 +548,9 @@ hdf5.SetDebugLevel(hdf5.DebugLevelVerbose)
 ```go
 f, err := hdf5.OpenFile("test.h5", hdf5.Create)
 if err != nil {
-    if hdf5Err, ok := err.(*hdf5.Error); ok {
-        fmt.Println("Full stack trace:")
-        fmt.Println(hdf5Err.Stack)
+    if hdf5.IsHDF5Error(err) {
+        // 使用 %+v 输出详细信息（包括位置和堆栈）
+        fmt.Printf("Full details: %+v\n", err)
     }
     return err
 }
