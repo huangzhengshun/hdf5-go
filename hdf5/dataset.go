@@ -674,6 +674,95 @@ func (d *dataset) Read(data interface{}) error {
 	return decodeData(buf, data, d.dtype)
 }
 
+// readChunkedRaw 读取 chunked 数据集的原始字节数据，不进行解码
+func (d *dataset) readChunkedRaw() ([]byte, error) {
+	dataSize := d.dspace.Size() * uint64(d.dtype.Size)
+	buf := make([]byte, dataSize)
+
+	if d.chunkIndex == nil {
+		var err error
+		d.chunkIndex, err = format.ReadChunkIndex(d.file.reader, d.layout.DataAddress)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if d.chunkCache == nil {
+		d.chunkCache = globalFileCache.GetOrCreate(d.addr, 0)
+	}
+
+	if d.chunkIndex.NumChunks == 0 {
+		return buf, nil
+	}
+
+	var chunkSize uint64 = 1
+	for _, dim := range d.layout.ChunkDims {
+		chunkSize *= dim
+	}
+	chunkByteSize := chunkSize * uint64(d.dtype.Size)
+
+	for i, entry := range d.chunkIndex.Entries {
+		if entry.ChunkOffset == 0 {
+			continue
+		}
+
+		var chunkBuf []byte
+		var err error
+
+		if cachedData, ok := d.chunkCache.Get(uint64(i)); ok {
+			chunkBuf = cachedData
+		} else {
+			chunkData := make([]byte, entry.ChunkSize)
+			if _, err := d.file.reader.Seek(int64(entry.ChunkOffset), 0); err != nil {
+				return nil, err
+			}
+			if _, err := d.file.reader.Read(chunkData); err != nil {
+				return nil, err
+			}
+
+			var storedChecksum uint32
+			if d.dtype.Fletcher32 && len(chunkData) >= 4 {
+				storedChecksum = binary.LittleEndian.Uint32(chunkData[len(chunkData)-4:])
+				chunkData = chunkData[:len(chunkData)-4]
+			}
+
+			remainingDataSize := dataSize - uint64(i)*chunkByteSize
+			expectedSize := int(chunkByteSize)
+			if remainingDataSize < chunkByteSize {
+				expectedSize = int(remainingDataSize)
+			}
+			chunkBuf, err = decompressData(chunkData, d.dtype.Compression, expectedSize)
+			if err != nil {
+				return nil, err
+			}
+
+			if d.dtype.Fletcher32 {
+				computedChecksum := computeFletcher32(chunkBuf)
+				if computedChecksum != storedChecksum {
+					return nil, errors.New("hdf5: fletcher32 checksum mismatch")
+				}
+			}
+
+			if d.dtype.Shuffle {
+				chunkBuf = undoShuffle(chunkBuf, int(d.dtype.Size))
+			}
+
+			d.chunkCache.Set(uint64(i), chunkBuf)
+		}
+
+		chunkOffset := uint64(i) * chunkSize * uint64(d.dtype.Size)
+		if chunkOffset < dataSize {
+			copySize := uint64(len(chunkBuf))
+			if chunkOffset+copySize > dataSize {
+				copySize = dataSize - chunkOffset
+			}
+			copy(buf[chunkOffset:chunkOffset+copySize], chunkBuf[:copySize])
+		}
+	}
+
+	return buf, nil
+}
+
 func (d *dataset) readChunked(data interface{}) error {
 	dataSize := d.dspace.Size() * uint64(d.dtype.Size)
 	buf := make([]byte, dataSize)
@@ -1035,8 +1124,8 @@ func (d *dataset) ReadSlice(data interface{}, sel Selection) error {
 	buf := make([]byte, dataSize)
 
 	if d.layout.LayoutClass == format.LayoutChunked {
-		fullBuf := make([]byte, d.dspace.Size()*uint64(d.dtype.Size))
-		if err := d.readChunked(&fullBuf); err != nil {
+		fullBuf, err := d.readChunkedRaw()
+		if err != nil {
 			return err
 		}
 		readOffset := uint64(0)

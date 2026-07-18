@@ -158,13 +158,27 @@ func (am *AttributeManager) Set(name string, data interface{}) error {
 		case reflect.Float64:
 			dtype = Datatype{Class: DatatypeFloat, Size: 8, ByteOrder: LittleEndian, FloatBits: 53}
 		case reflect.String:
-			dtype = Datatype{Class: DatatypeString, Size: 64, ByteOrder: LittleEndian, StringPadding: NullTerminated, StringSize: 64}
+			maxLen := uint32(0)
+			for i := 0; i < rv.Len(); i++ {
+				l := uint32(len(rv.Index(i).String()))
+				if l > maxLen {
+					maxLen = l
+				}
+			}
+			if maxLen == 0 {
+				maxLen = 1
+			}
+			dtype = Datatype{Class: DatatypeString, Size: maxLen, ByteOrder: LittleEndian, StringPadding: NullTerminated, StringSize: maxLen}
 		default:
 			return ErrInvalidData
 		}
 		dspace = Dataspace{Dims: []uint64{uint64(rv.Len())}, MaxDims: []uint64{uint64(rv.Len())}}
 	case reflect.String:
-		dtype = Datatype{Class: DatatypeString, Size: 64, ByteOrder: LittleEndian, StringPadding: NullTerminated, StringSize: 64}
+		strLen := uint32(len(rv.String()))
+		if strLen == 0 {
+			strLen = 1
+		}
+		dtype = Datatype{Class: DatatypeString, Size: strLen, ByteOrder: LittleEndian, StringPadding: NullTerminated, StringSize: strLen}
 		dspace = Dataspace{Dims: []uint64{1}, MaxDims: []uint64{1}}
 	default:
 		return ErrInvalidData
