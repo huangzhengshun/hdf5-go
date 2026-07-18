@@ -4,7 +4,7 @@ import (
 	"errors"
 	"reflect"
 
-	"github.com/zhengshun.huang/hdf5-go/format"
+	"github.com/huangzhengshun/hdf5-go/format"
 )
 
 var (
@@ -363,5 +363,3 @@ func (am *AttributeManager) Copy(dest *AttributeManager, name string) error {
 
 	return dest.Set(name, data)
 }
-
-

@@ -29,7 +29,7 @@ import (
     "fmt"
     "os"
     
-    "github.com/zhengshun.huang/hdf5-go"
+    "github.com/huangzhengshun/hdf5-go"
 )
 
 func main() {
@@ -54,7 +54,7 @@ import (
     "fmt"
     "os"
     
-    "github.com/zhengshun.huang/hdf5-go"
+    "github.com/huangzhengshun/hdf5-go"
 )
 
 func main() {
@@ -78,7 +78,7 @@ package main
 import (
     "fmt"
     
-    "github.com/zhengshun.huang/hdf5-go"
+    "github.com/huangzhengshun/hdf5-go"
 )
 
 func main() {
@@ -125,7 +125,7 @@ import (
     "fmt"
     "os"
     
-    "github.com/zhengshun.huang/hdf5-go"
+    "github.com/huangzhengshun/hdf5-go"
 )
 
 func main() {
@@ -165,7 +165,7 @@ import (
     "fmt"
     "os"
     
-    "github.com/zhengshun.huang/hdf5-go"
+    "github.com/huangzhengshun/hdf5-go"
 )
 
 func main() {
@@ -208,7 +208,7 @@ import (
     "fmt"
     "os"
     
-    "github.com/zhengshun.huang/hdf5-go"
+    "github.com/huangzhengshun/hdf5-go"
 )
 
 func main() {
@@ -287,7 +287,7 @@ import (
     "fmt"
     "os"
     
-    "github.com/zhengshun.huang/hdf5-go"
+    "github.com/huangzhengshun/hdf5-go"
 )
 
 func main() {
@@ -341,7 +341,7 @@ import (
     "fmt"
     "os"
     
-    "github.com/zhengshun.huang/hdf5-go"
+    "github.com/huangzhengshun/hdf5-go"
 )
 
 func main() {
@@ -393,7 +393,7 @@ import (
     "fmt"
     "os"
     
-    "github.com/zhengshun.huang/hdf5-go"
+    "github.com/huangzhengshun/hdf5-go"
 )
 
 func main() {
@@ -440,7 +440,7 @@ import (
     "fmt"
     "os"
     
-    "github.com/zhengshun.huang/hdf5-go"
+    "github.com/huangzhengshun/hdf5-go"
 )
 
 func main() {
@@ -490,7 +490,7 @@ import (
     "fmt"
     "os"
     
-    "github.com/zhengshun.huang/hdf5-go"
+    "github.com/huangzhengshun/hdf5-go"
 )
 
 func main() {
@@ -561,7 +561,7 @@ import (
     "fmt"
     "os"
     
-    "github.com/zhengshun.huang/hdf5-go"
+    "github.com/huangzhengshun/hdf5-go"
 )
 
 func main() {
@@ -606,7 +606,7 @@ import (
     "fmt"
     "os"
     
-    "github.com/zhengshun.huang/hdf5-go"
+    "github.com/huangzhengshun/hdf5-go"
 )
 
 func main() {
@@ -664,7 +664,7 @@ import (
     "fmt"
     "os"
     
-    "github.com/zhengshun.huang/hdf5-go"
+    "github.com/huangzhengshun/hdf5-go"
 )
 
 func main() {
@@ -717,7 +717,7 @@ import (
     "fmt"
     "os"
     
-    "github.com/zhengshun.huang/hdf5-go"
+    "github.com/huangzhengshun/hdf5-go"
 )
 
 func main() {
@@ -766,7 +766,7 @@ import (
     "fmt"
     "os"
     
-    "github.com/zhengshun.huang/hdf5-go"
+    "github.com/huangzhengshun/hdf5-go"
 )
 
 func main() {
@@ -820,7 +820,7 @@ import (
     "fmt"
     "os"
     
-    "github.com/zhengshun.huang/hdf5-go"
+    "github.com/huangzhengshun/hdf5-go"
 )
 
 func main() {
@@ -869,7 +869,7 @@ import (
     "fmt"
     "os"
     
-    "github.com/zhengshun.huang/hdf5-go"
+    "github.com/huangzhengshun/hdf5-go"
 )
 
 func main() {
@@ -918,7 +918,7 @@ import (
     "fmt"
     "os"
     
-    "github.com/zhengshun.huang/hdf5-go"
+    "github.com/huangzhengshun/hdf5-go"
 )
 
 func main() {
@@ -971,7 +971,7 @@ import (
     "fmt"
     "os"
     
-    "github.com/zhengshun.huang/hdf5-go"
+    "github.com/huangzhengshun/hdf5-go"
 )
 
 func main() {
@@ -1024,7 +1024,7 @@ import (
     "fmt"
     "os"
     
-    "github.com/zhengshun.huang/hdf5-go"
+    "github.com/huangzhengshun/hdf5-go"
 )
 
 func main() {
@@ -1068,7 +1068,7 @@ import (
     "fmt"
     "os"
     
-    "github.com/zhengshun.huang/hdf5-go"
+    "github.com/huangzhengshun/hdf5-go"
 )
 
 func main() {
@@ -1113,7 +1113,7 @@ import (
     "fmt"
     "os"
     
-    "github.com/zhengshun.huang/hdf5-go"
+    "github.com/huangzhengshun/hdf5-go"
 )
 
 func main() {
@@ -1158,7 +1158,7 @@ import (
     "fmt"
     "os"
     
-    "github.com/zhengshun.huang/hdf5-go"
+    "github.com/huangzhengshun/hdf5-go"
 )
 
 func main() {
@@ -1204,7 +1204,7 @@ import (
     "fmt"
     "os"
     
-    "github.com/zhengshun.huang/hdf5-go"
+    "github.com/huangzhengshun/hdf5-go"
 )
 
 func main() {
@@ -1262,7 +1262,7 @@ import (
     "fmt"
     "os"
     
-    "github.com/zhengshun.huang/hdf5-go"
+    "github.com/huangzhengshun/hdf5-go"
 )
 
 func main() {
@@ -1322,7 +1322,7 @@ import (
     "fmt"
     "os"
     
-    "github.com/zhengshun.huang/hdf5-go"
+    "github.com/huangzhengshun/hdf5-go"
 )
 
 func main() {
@@ -1392,7 +1392,7 @@ import (
     "fmt"
     "sync"
     
-    "github.com/zhengshun.huang/hdf5-go"
+    "github.com/huangzhengshun/hdf5-go"
 )
 
 func main() {
@@ -1457,7 +1457,7 @@ import (
     "fmt"
     "os"
     
-    "github.com/zhengshun.huang/hdf5-go"
+    "github.com/huangzhengshun/hdf5-go"
 )
 
 func main() {
@@ -1505,7 +1505,7 @@ import (
     "fmt"
     "os"
     
-    "github.com/zhengshun.huang/hdf5-go"
+    "github.com/huangzhengshun/hdf5-go"
 )
 
 func main() {
@@ -1580,7 +1580,7 @@ import (
     "fmt"
     "os"
     
-    "github.com/zhengshun.huang/hdf5-go"
+    "github.com/huangzhengshun/hdf5-go"
 )
 
 func main() {
@@ -1670,7 +1670,7 @@ import (
     "fmt"
     "os"
     
-    "github.com/zhengshun.huang/hdf5-go"
+    "github.com/huangzhengshun/hdf5-go"
 )
 
 func main() {

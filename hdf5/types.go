@@ -6,7 +6,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/zhengshun.huang/hdf5-go/format"
+	"github.com/huangzhengshun/hdf5-go/format"
 )
 
 type FileMode uint8

@@ -3,7 +3,7 @@ package hdf5
 import (
 	"errors"
 
-	"github.com/zhengshun.huang/hdf5-go/format"
+	"github.com/huangzhengshun/hdf5-go/format"
 )
 
 type ExtensibleDatatype struct {
@@ -96,5 +96,3 @@ func decodeExtensibleDatatype(data []byte) (ExtensibleDatatype, error) {
 		Versions:       []Datatype{dtype},
 	}, nil
 }
-
-

@@ -1,4 +1,4 @@
-module github.com/zhengshun.huang/hdf5-go
+module github.com/huangzhengshun/hdf5-go
 
 go 1.19
 
