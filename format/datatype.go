@@ -269,6 +269,7 @@ func decodeDatatypeV2(data []byte) (DatatypeMessage, error) {
 		dt.Size = uint32(data[12])
 	case ClassFloat:
 		dt.FloatBits = data[8]
+		dt.Size = uint32(data[12])
 	case ClassString:
 		dt.StringPadding = data[8]
 		dt.StringSize = binary.LittleEndian.Uint32(data[12:16])
@@ -398,10 +399,52 @@ func decodeDatatypeV2(data []byte) (DatatypeMessage, error) {
 		}
 	case ClassVarLength:
 		offset := 16
-		if offset+16 <= len(data) {
-			baseDt, err := DecodeDatatypeMessage(data[offset : offset+16])
-			if err == nil {
-				dt.ArrayBase = &baseDt
+		if offset < len(data) {
+			version := data[offset]
+			var baseDtSize int
+			if version == DatatypeVersion1 {
+				baseDtSize = 9
+			} else {
+				baseDtSize = 16
+				class := data[offset+1]
+				if class == ClassCompound {
+					numFields := binary.LittleEndian.Uint32(data[offset+12 : offset+16])
+					baseDtSize = 16
+					fieldOffset := offset + 16
+					for i := uint32(0); i < numFields; i++ {
+						if fieldOffset+4 > len(data) {
+							break
+						}
+						nameLen := binary.LittleEndian.Uint32(data[fieldOffset : fieldOffset+4])
+						fieldOffset += 4 + int(nameLen) + 4
+						if fieldOffset+1 > len(data) {
+							break
+						}
+						nestedVersion := data[fieldOffset]
+						nestedSize := 16
+						if nestedVersion == DatatypeVersion1 {
+							nestedSize = 9
+						}
+						baseDtSize += 4 + int(nameLen) + 4 + nestedSize
+					}
+				} else if class == ClassEnum {
+					baseDtSize = 16 + 16
+					numMembers := binary.LittleEndian.Uint32(data[offset+12 : offset+16])
+					baseDtSize += int(numMembers) * (4 + 1 + 8)
+				} else if class == ClassArray {
+					numDims := binary.LittleEndian.Uint32(data[offset+12 : offset+16])
+					baseDtSize = 16 + 16 + int(numDims)*8
+				} else if class == ClassVarLength {
+					baseDtSize = 16 + 16
+				} else {
+					baseDtSize = 16
+				}
+			}
+			if offset+baseDtSize <= len(data) {
+				baseDt, err := DecodeDatatypeMessage(data[offset : offset+baseDtSize])
+				if err == nil {
+					dt.ArrayBase = &baseDt
+				}
 			}
 		}
 	case ClassReference:

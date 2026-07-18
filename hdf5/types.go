@@ -42,13 +42,13 @@ const (
 	DatatypeInteger   DatatypeClass = 0
 	DatatypeFloat                   = 1
 	DatatypeString                  = 2
+	DatatypeArray                   = 3
 	DatatypeCompound                = 4
-	DatatypeArray                   = 5
-	DatatypeEnum                    = 6
-	DatatypeReference               = 7
-	DatatypeOpaque                  = 8
-	DatatypeBitfield                = 9
-	DatatypeVarLength               = 10
+	DatatypeEnum                    = 5
+	DatatypeReference               = 6
+	DatatypeOpaque                  = 7
+	DatatypeBitfield                = 8
+	DatatypeVarLength               = 9
 )
 
 var (

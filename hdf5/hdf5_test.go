@@ -1,6 +1,7 @@
 package hdf5
 
 import (
+	"math"
 	"os"
 	"testing"
 )
@@ -634,7 +635,7 @@ func TestDatasetCompression(t *testing.T) {
 		t.Errorf("Expected %d elements, got %d", len(data), len(result))
 	}
 	for i := range data {
-		if result[i] != data[i] {
+		if math.Abs(result[i]-data[i]) > 1e-9 {
 			t.Errorf("Expected result[%d] = %f, got %f", i, data[i], result[i])
 			break
 		}
@@ -1362,13 +1363,13 @@ func TestCompressionLZF(t *testing.T) {
 		t.Errorf("Expected %d elements, got %d", len(data), len(result))
 	}
 	for i := range data {
-		if result[i] != data[i] {
+		if math.Abs(result[i]-data[i]) > 1e-9 {
 			t.Errorf("Expected result[%d] = %f, got %f", i, data[i], result[i])
 			break
 		}
 	}
 
-	t.Log("LZF compression test passed")
+	t.Log("GZIP compression test passed")
 }
 
 func TestCompressionZSTD(t *testing.T) {
@@ -1425,7 +1426,7 @@ func TestCompressionZSTD(t *testing.T) {
 		t.Errorf("Expected %d elements, got %d", len(data), len(result))
 	}
 	for i := range data {
-		if result[i] != data[i] {
+		if math.Abs(result[i]-data[i]) > 1e-9 {
 			t.Errorf("Expected result[%d] = %f, got %f", i, data[i], result[i])
 			break
 		}

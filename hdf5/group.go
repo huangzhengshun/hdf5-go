@@ -358,6 +358,10 @@ func (g *group) GetGroup(name string) (Group, error) {
 		return nil, ErrClosedGroup
 	}
 
+	if name == "/" {
+		return g.file.root, nil
+	}
+
 	var parentPath, childName string
 	if strings.HasPrefix(name, "/") {
 		parentPath, childName = parsePath(name)

@@ -33,6 +33,24 @@ func (a *attribute) Dataspace() Dataspace {
 }
 
 func (a *attribute) Read(data interface{}) error {
+	rv := reflect.ValueOf(data)
+	if rv.Kind() != reflect.Ptr {
+		return ErrInvalidData
+	}
+	rv = rv.Elem()
+
+	if rv.Kind() == reflect.Slice {
+		expectedLen := int(a.dspace.Size())
+		if rv.IsNil() || rv.Len() == 0 {
+			newSlice := reflect.MakeSlice(rv.Type(), expectedLen, expectedLen)
+			rv.Set(newSlice)
+		}
+		if rv.Len() > expectedLen {
+			newSlice := reflect.MakeSlice(rv.Type(), expectedLen, expectedLen)
+			rv.Set(newSlice)
+		}
+	}
+
 	return decodeData(a.data, data, a.dtype)
 }
 

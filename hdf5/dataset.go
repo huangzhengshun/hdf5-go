@@ -627,6 +627,9 @@ func (d *dataset) Read(data interface{}) error {
 	}
 
 	dataSize := d.dspace.Size() * uint64(d.dtype.Size)
+	if d.dtype.Class == DatatypeVarLength && d.layout.DataSize > 0 {
+		dataSize = d.layout.DataSize
+	}
 
 	if _, err := d.file.reader.Seek(int64(d.layout.DataAddress), 0); err != nil {
 		return err
@@ -1373,13 +1376,94 @@ func (d *dataset) WriteSlice(data interface{}, sel Selection) error {
 		return err
 	}
 
-	if _, err := d.file.reader.Seek(int64(d.layout.DataAddress), 0); err != nil {
-		return err
-	}
+	dataSize := d.dspace.Size() * uint64(d.dtype.Size)
+	fullBuf := make([]byte, dataSize)
 
-	fullBuf := make([]byte, d.layout.DataSize)
-	if _, err := d.file.reader.Read(fullBuf); err != nil {
-		return err
+	if d.layout.LayoutClass == format.LayoutChunked {
+		if d.chunkIndex == nil {
+			var readErr error
+			d.chunkIndex, readErr = format.ReadChunkIndex(d.file.reader, d.layout.DataAddress)
+			if readErr != nil {
+				return readErr
+			}
+		}
+
+		var chunkSize uint64 = 1
+		for _, dim := range d.layout.ChunkDims {
+			chunkSize *= dim
+		}
+		chunkByteSize := chunkSize * uint64(d.dtype.Size)
+
+		for i, entry := range d.chunkIndex.Entries {
+			if entry.ChunkOffset == 0 {
+				continue
+			}
+
+			if _, seekErr := d.file.reader.Seek(int64(entry.ChunkOffset), 0); seekErr != nil {
+				return seekErr
+			}
+
+			chunkData := make([]byte, entry.ChunkSize)
+			if _, readErr := d.file.reader.Read(chunkData); readErr != nil {
+				return readErr
+			}
+
+			var storedChecksum uint32
+			if d.dtype.Fletcher32 && len(chunkData) >= 4 {
+				storedChecksum = binary.LittleEndian.Uint32(chunkData[len(chunkData)-4:])
+				chunkData = chunkData[:len(chunkData)-4]
+			}
+
+			remainingDataSize := dataSize - uint64(i)*chunkByteSize
+			expectedSize := int(chunkByteSize)
+			if remainingDataSize < chunkByteSize {
+				expectedSize = int(remainingDataSize)
+			}
+
+			chunkBuf, decompressErr := decompressData(chunkData, d.dtype.Compression, expectedSize)
+			if decompressErr != nil {
+				return decompressErr
+			}
+
+			if d.dtype.Fletcher32 {
+				computedChecksum := computeFletcher32(chunkBuf)
+				if computedChecksum != storedChecksum {
+					return errors.New("hdf5: fletcher32 checksum mismatch")
+				}
+			}
+
+			if d.dtype.Shuffle {
+				chunkBuf = undoShuffle(chunkBuf, int(d.dtype.Size))
+			}
+
+			chunkOffset := uint64(i) * chunkByteSize
+			if chunkOffset < dataSize {
+				copySize := uint64(len(chunkBuf))
+				if chunkOffset+copySize > dataSize {
+					copySize = dataSize - chunkOffset
+				}
+				copy(fullBuf[chunkOffset:chunkOffset+copySize], chunkBuf[:copySize])
+			}
+		}
+	} else {
+		if _, err := d.file.reader.Seek(int64(d.layout.DataAddress), 0); err != nil {
+			return err
+		}
+		if d.dtype.Compression != "" {
+			compressedBuf := make([]byte, d.layout.DataSize)
+			if _, err := d.file.reader.Read(compressedBuf); err != nil {
+				return err
+			}
+			decompressed, err := decompressData(compressedBuf, d.dtype.Compression, int(dataSize))
+			if err != nil {
+				return err
+			}
+			copy(fullBuf, decompressed)
+		} else {
+			if _, err := d.file.reader.Read(fullBuf); err != nil && err != io.EOF {
+				return err
+			}
+		}
 	}
 
 	writeOffset := uint64(0)
@@ -1391,12 +1475,147 @@ func (d *dataset) WriteSlice(data interface{}, sel Selection) error {
 		writeOffset += bytesWritten
 	}
 
+	if d.layout.LayoutClass == format.LayoutChunked {
+		var chunkSize uint64 = 1
+		for _, dim := range d.layout.ChunkDims {
+			chunkSize *= dim
+		}
+		chunkByteSize := chunkSize * uint64(d.dtype.Size)
+		numChunks := (uint64(len(fullBuf)) + chunkByteSize - 1) / chunkByteSize
+
+		if d.chunkIndex == nil {
+			d.chunkIndex = &format.ChunkIndex{
+				NumChunks: numChunks,
+				ChunkDims: d.layout.ChunkDims,
+				Entries:   make([]format.ChunkIndexEntry, numChunks),
+			}
+		} else if d.chunkIndex.NumChunks < numChunks {
+			newEntries := make([]format.ChunkIndexEntry, numChunks)
+			copy(newEntries, d.chunkIndex.Entries)
+			d.chunkIndex.Entries = newEntries
+			d.chunkIndex.NumChunks = numChunks
+			d.chunkIndex.ChunkDims = d.layout.ChunkDims
+		}
+
+		for i := uint64(0); i < numChunks; i++ {
+			start := i * chunkByteSize
+			end := start + chunkByteSize
+			if end > uint64(len(fullBuf)) {
+				end = uint64(len(fullBuf))
+			}
+			chunkBuf := fullBuf[start:end]
+
+			if d.dtype.Shuffle {
+				chunkBuf = applyShuffle(chunkBuf, int(d.dtype.Size))
+			}
+
+			writeBuf, err := compressData(chunkBuf, d.dtype.Compression)
+			if err != nil {
+				return err
+			}
+
+			if d.dtype.Fletcher32 {
+				checksum := computeFletcher32(chunkBuf)
+				checksumBuf := make([]byte, 4)
+				binary.LittleEndian.PutUint32(checksumBuf, checksum)
+				writeBuf = append(writeBuf, checksumBuf...)
+			}
+
+			if d.chunkIndex.Entries[i].ChunkOffset == 0 {
+				pos, _ := d.file.writer.Seek(0, 2)
+				d.chunkIndex.Entries[i].ChunkOffset = uint64(pos)
+			}
+
+			if _, err := d.file.writer.Seek(int64(d.chunkIndex.Entries[i].ChunkOffset), 0); err != nil {
+				return err
+			}
+			if _, err := d.file.writer.Write(writeBuf); err != nil {
+				return err
+			}
+
+			d.chunkIndex.Entries[i].ChunkSize = uint64(len(writeBuf))
+
+			if d.chunkCache != nil {
+				d.chunkCache.Remove(uint64(i))
+			}
+		}
+
+		if d.chunkIndex.NumChunks > 0 {
+			pos, _ := d.file.writer.Seek(0, 2)
+			d.layout.DataAddress = uint64(pos)
+		}
+
+		indexData, err := format.EncodeChunkIndex(d.chunkIndex)
+		if err != nil {
+			return err
+		}
+		d.layout.DataSize = uint64(len(indexData))
+
+		if _, err := d.file.writer.Seek(int64(d.layout.DataAddress), 0); err != nil {
+			return err
+		}
+		if _, _, err := format.WriteChunkIndex(d.file.writer, d.chunkIndex); err != nil {
+			return err
+		}
+
+		layoutEncoded, err := format.EncodeLayoutMessage(d.layout.LayoutClass, d.layout.DataSize, d.layout.DataAddress, d.layout.ChunkDims)
+		if err != nil {
+			return err
+		}
+
+		newLayoutSize := uint16(10 + len(layoutEncoded))
+
+		for i, msg := range d.header.Messages {
+			if msg.Type == format.MessageDataset {
+				sizeDiff := int64(newLayoutSize) - int64(d.header.Messages[i].Size)
+				d.header.Messages[i].Content = layoutEncoded
+				d.header.Messages[i].Size = newLayoutSize
+				d.header.TotalHeaderSize += uint64(sizeDiff)
+				break
+			}
+		}
+
+		if _, err := d.file.writer.Seek(int64(d.addr), 0); err != nil {
+			return err
+		}
+		if _, err := format.WriteObjectHeader(d.file.writer, d.super, d.header); err != nil {
+			return err
+		}
+
+		if file, ok := d.file.writer.(*os.File); ok {
+			if err := file.Sync(); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}
+
+	writeBuf := fullBuf
+	if d.dtype.Shuffle {
+		writeBuf = applyShuffle(writeBuf, int(d.dtype.Size))
+	}
+
+	compressed, err := compressData(writeBuf, d.dtype.Compression)
+	if err != nil {
+		return err
+	}
+
+	if d.dtype.Fletcher32 {
+		checksum := computeFletcher32(writeBuf)
+		checksumBuf := make([]byte, 4)
+		binary.LittleEndian.PutUint32(checksumBuf, checksum)
+		compressed = append(compressed, checksumBuf...)
+	}
+
 	if _, err := d.file.writer.Seek(int64(d.layout.DataAddress), 0); err != nil {
 		return err
 	}
-	if _, err := d.file.writer.Write(fullBuf); err != nil {
+	if _, err := d.file.writer.Write(compressed); err != nil {
 		return err
 	}
+
+	d.layout.DataSize = uint64(len(compressed))
 	return nil
 }
 
@@ -1572,6 +1791,10 @@ func (d *dataset) Close() error {
 		return nil
 	}
 	d.closed = true
+	if d.chunkCache != nil {
+		d.chunkCache.Clear()
+	}
+	globalFileCache.Remove(d.addr)
 	return nil
 }
 
@@ -1721,10 +1944,22 @@ func encodeSliceData(buf []byte, rv reflect.Value, dtype Datatype) ([]byte, erro
 			return nil, ErrInvalidData
 		}
 		elemSize := dtype.BaseType.Size
-		for i := 0; i < rv.Len(); i++ {
-			elemBuf := buf[i*int(elemSize) : (i+1)*int(elemSize)]
-			if _, err := encodeScalarData(elemBuf, rv.Index(i), *dtype.BaseType); err != nil {
-				return nil, err
+		elemKind := rv.Type().Elem().Kind()
+		if elemKind == reflect.Slice || elemKind == reflect.Array {
+			elemSize = dtype.Size
+			for i := 0; i < rv.Len(); i++ {
+				elemBuf := buf[i*int(elemSize) : (i+1)*int(elemSize)]
+				elem := rv.Index(i)
+				if _, err := encodeSliceData(elemBuf, elem, *dtype.BaseType); err != nil {
+					return nil, err
+				}
+			}
+		} else {
+			for i := 0; i < rv.Len(); i++ {
+				elemBuf := buf[i*int(elemSize) : (i+1)*int(elemSize)]
+				if _, err := encodeScalarData(elemBuf, rv.Index(i), *dtype.BaseType); err != nil {
+					return nil, err
+				}
 			}
 		}
 	case DatatypeVarLength:
@@ -1835,15 +2070,67 @@ func decodeData(buf []byte, data interface{}, dtype Datatype) error {
 }
 
 func decodeSliceData(buf []byte, rv reflect.Value, dtype Datatype) error {
-	if rv.IsNil() || rv.Len() == 0 {
-		expectedLen := len(buf) / int(dtype.Size)
-		newSlice := reflect.MakeSlice(rv.Type(), expectedLen, expectedLen)
-		rv.Set(newSlice)
-	}
-
 	elemKind := rv.Type().Elem().Kind()
 
+	if dtype.Class != DatatypeVarLength {
+		expectedLen := len(buf) / int(dtype.Size)
+		if rv.IsNil() || rv.Len() == 0 {
+			newSlice := reflect.MakeSlice(rv.Type(), expectedLen, expectedLen)
+			rv.Set(newSlice)
+		} else if rv.Len() > expectedLen {
+			newSlice := reflect.MakeSlice(rv.Type(), expectedLen, expectedLen)
+			rv.Set(newSlice)
+		}
+	}
+
 	switch dtype.Class {
+	case DatatypeVarLength:
+		if dtype.BaseType == nil {
+			return ErrInvalidData
+		}
+		count := 0
+		offset := 0
+		for offset < len(buf) {
+			if offset+4 > len(buf) {
+				break
+			}
+			itemCount := binary.LittleEndian.Uint32(buf[offset : offset+4])
+			offset += 4 + int(itemCount)*int(dtype.BaseType.Size)
+			count++
+		}
+
+		if rv.IsNil() || rv.Len() == 0 {
+			newSlice := reflect.MakeSlice(rv.Type(), count, count)
+			rv.Set(newSlice)
+		} else if rv.Len() > count {
+			newSlice := reflect.MakeSlice(rv.Type(), count, count)
+			rv.Set(newSlice)
+		}
+
+		offset = 0
+		for i := 0; i < rv.Len(); i++ {
+			if offset+4 > len(buf) {
+				return ErrInvalidData
+			}
+			itemCount := binary.LittleEndian.Uint32(buf[offset : offset+4])
+			offset += 4
+
+			elemType := rv.Index(i).Type()
+			if elemType.Kind() == reflect.Slice {
+				elemSlice := reflect.MakeSlice(elemType, int(itemCount), int(itemCount))
+				elemDataSize := uint64(itemCount) * uint64(dtype.BaseType.Size)
+				if offset+int(elemDataSize) > len(buf) {
+					return ErrInvalidData
+				}
+				elemBuf := buf[offset : offset+int(elemDataSize)]
+				if err := decodeSliceData(elemBuf, elemSlice, *dtype.BaseType); err != nil {
+					return err
+				}
+				rv.Index(i).Set(elemSlice)
+				offset += int(elemDataSize)
+			}
+		}
+		return nil
 	case DatatypeCompound:
 		if rv.Len() == 0 {
 			return nil
@@ -1972,37 +2259,31 @@ func decodeSliceData(buf []byte, rv reflect.Value, dtype Datatype) error {
 			return ErrInvalidData
 		}
 		elemSize := dtype.BaseType.Size
-		for i := 0; i < rv.Len(); i++ {
-			elemBuf := buf[i*int(elemSize) : (i+1)*int(elemSize)]
-			if err := decodeScalarData(elemBuf, rv.Index(i), *dtype.BaseType); err != nil {
-				return err
-			}
-		}
-	case DatatypeVarLength:
-		if dtype.BaseType == nil {
-			return ErrInvalidData
-		}
-		offset := 0
-		for i := 0; i < rv.Len(); i++ {
-			if offset+4 > len(buf) {
-				return ErrInvalidData
-			}
-			itemCount := binary.LittleEndian.Uint32(buf[offset : offset+4])
-			offset += 4
-
-			elemType := rv.Index(i).Type()
-			if elemType.Kind() == reflect.Slice {
-				elemSlice := reflect.MakeSlice(elemType, int(itemCount), int(itemCount))
-				elemDataSize := uint64(itemCount) * uint64(dtype.BaseType.Size)
-				if offset+int(elemDataSize) > len(buf) {
-					return ErrInvalidData
+		elemKind := rv.Type().Elem().Kind()
+		if elemKind == reflect.Slice || elemKind == reflect.Array {
+			elemSize = dtype.Size
+			for i := 0; i < rv.Len(); i++ {
+				elemBuf := buf[i*int(elemSize) : (i+1)*int(elemSize)]
+				elem := rv.Index(i)
+				if elem.Kind() == reflect.Slice {
+					numElements := int(elemSize) / int(dtype.BaseType.Size)
+					newSlice := reflect.MakeSlice(elem.Type(), numElements, numElements)
+					if err := decodeSliceData(elemBuf, newSlice, *dtype.BaseType); err != nil {
+						return err
+					}
+					rv.Index(i).Set(newSlice)
+				} else {
+					if err := decodeScalarData(elemBuf, elem, *dtype.BaseType); err != nil {
+						return err
+					}
 				}
-				elemBuf := buf[offset : offset+int(elemDataSize)]
-				if err := decodeSliceData(elemBuf, elemSlice, *dtype.BaseType); err != nil {
+			}
+		} else {
+			for i := 0; i < rv.Len(); i++ {
+				elemBuf := buf[i*int(elemSize) : (i+1)*int(elemSize)]
+				if err := decodeScalarData(elemBuf, rv.Index(i), *dtype.BaseType); err != nil {
 					return err
 				}
-				rv.Index(i).Set(elemSlice)
-				offset += int(elemDataSize)
 			}
 		}
 	case DatatypeReference:
